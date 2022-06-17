@@ -16,7 +16,8 @@ A simple script to dump and restore all the table/dashboards in an HEAVY.AI db.
 Backup a database called tpch_r using the deafult user admin with the default password
 
 ```bash
-./backup_database.sh backup --database=tpch_r --dumpfile=/mapd_storage/```
+./backup_database.sh backup --database=tpch_r --dumpfile=/mapd_storage/
+```
 
 output
 
@@ -32,7 +33,8 @@ Info: Adding table orders to backup file.
 Info: Backup of database tpch_r has been successful.
       Backup file /mapd_storage/backup_kxn.tar.gz.
       Elapsed time 48 seconds
-      File size 198M.```
+      File size 198M.
+```
 
 Restore into a database called tpch_r2 using the deafult user admin with the default password forcing the databse creation.
 
@@ -53,7 +55,5 @@ Info: Restoring table orders
 Info: Restoring dashboard test_backup_restore.
 Info: Restoring dashboard dashboard (user test).
 Info: Restore of database tpch_r2 has been successful.
-      Elapsed time 10 seconds.```
-      
-
-
+      Elapsed time 10 seconds.
+```
