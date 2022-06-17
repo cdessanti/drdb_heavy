@@ -16,9 +16,10 @@ A simple script to dump and restore all the table/dashboards in an HEAVY.AI db.
 Backup a database called tpch_r using the deafult user admin with the default password
 
 ```bash
-./backup_database.sh backup --database=tpch_r --dumpfile=/mapd_storage/
-```
+./backup_database.sh backup --database=tpch_r --dumpfile=/mapd_storage/```
+
 output
+
 ```bash
 Info: Starting the backup of database tpch_r.
 Info: Getting the list of the tables to backup.
@@ -40,7 +41,9 @@ Restore into a database called tpch_r2 using the deafult user admin with the def
 --dumpfile=/mapd_storage/backup_kxn.tar.gz \
 --dumpdir=/mapd_storage/ --forcedb
 ```
+
 output
+
 ```bash
 Info: Starting the restore of database tpch_r2.
 Info: Getting the list of the tables to restore.
