@@ -230,7 +230,13 @@ IFS='
   done;
 }
 
-#set -x
+export PATH=/opt/omnisci/bin/:/opt/heavyai/bin:$PATH
+if [ "$(which omnisql)" == "" ]; then
+  echo "Error: Cannot find omnisql. Add if to you PATH variable"
+  echo "export PATH=/your_heavy_installation/bin:$PATH"
+  exit -1
+fi;
+
 createAndCheckBackupDir
 start_time=$(date +%s)
 
