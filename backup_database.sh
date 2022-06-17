@@ -136,7 +136,7 @@ function checkBackupFile() {
     cleanupBackupDir
     exit -1
   fi;
-  tar xf /mapd_storage/backup_kxn_db.tar -O $list_of_tables_filename 2>1 >/dev/null
+  tar xf /mapd_storage/backup_kxn_db.tar -O $list_of_tables_filename >/dev/null
   if [ $? != 0 ]; then
     echo "Error: The backup file "$backup_file" is invalid. Exiting"
     cleanupBackupDir
@@ -221,7 +221,7 @@ IFS='
         tar rf $backup_file -C $backup_dir $name_trimmed.bak >/dev/null
     elif [ "$action" == "restore" ]; then 
         echo "Info: Restoring dashboard "$name_trimmed"."
-        tar xvf $backup_file -C $backup_dir $name_trimmed.bak 
+        tar xf $backup_file -C $backup_dir $name_trimmed.bak >/dev/null
         if [ $? == 0 ]; then
         echo "\import_dashboard \"$name_trimmed\" \"$backup_dir/$name_trimmed.bak\" " | omnisql -p $password  $database_to_backup >/dev/null
         fi;
@@ -288,7 +288,7 @@ elif [ "$action" == "restore" ]; then
   tar xf $backup_file -C $backup_dir $list_of_tables_filename
   processTables
   rm $backup_dir/$list_of_tables_filename
-  tar xvf $backup_file -C $backup_dir $list_of_dashboards_filename
+  tar xf $backup_file -C $backup_dir $list_of_dashboards_filename >/dev/null
   if [ $? == 0 ]; then
     processDashboards
   fi;
