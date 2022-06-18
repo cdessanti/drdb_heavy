@@ -1,71 +1,18 @@
 #!/bin/bash
+
+#deafult and fixe variables
 username=admin
-password=HyperInteractive 
+password=HyperInteractive
+import_privileges=yes
+list_of_tables_filename=list_of_tables.txt
+list_of_dashboards_filename=list_of_dashboards.txt
+list_of_users_filename=list_of_users.txt
+list_of_views_filename=list_of_views.txt
 
 function show_usage_and_exit()  {
   echo "backup_database.sh backup|restore --database=database_name --dumpfile=dump_file --dumpdir=tempdir --forcedb --noprivs [--user=username] [--password=pwd] "
   exit $1
 }
-
-for i in "$@"
-do
-  case $i in
-    restore)
-      action="restore"
-      shift
-      ;;
-    backup)
-      action="backup"
-      shift
-      ;;
-    --user=*)
-      username=${i#*=}
-      shift
-      ;;
-    --password=*)
-      password=${i#*=}
-      shift
-      ;;
-    --database=*)
-      database_to_backup=${i#*=}
-      shift
-      ;;
-    --dumpfile=*)
-      backup_file=${i#*=}
-      shift
-      ;;
-    --dumpdir=*)
-      backup_dir=${i#*=}/temp_backup_restore_heavy
-      shift
-      ;;
-    --forcedb)
-      force_dest_db_creation=yes;
-      shift
-      ;;
-    --noprivs)
-      import_privileges=no
-      shift
-      ;;
-    --help)
-      show_usage_and_exit 0
-      shift
-      ;;
-     *)
-       show_usage_and_exit 1
-       ;;
-  esac;
-done;
-
- if [ "$action" == "" ]; then
-   echo "Error: Choose if do a backup or a restore"
-   show_usage_and_exit 1
- fi;
-
-list_of_tables_filename=list_of_tables.txt
-list_of_dashboards_filename=list_of_dashboards.txt
-list_of_users_filename=list_of_users.txt
-
-omnisql_command="omnisql -u $username -p $password -q "
 
 function checkDatabaseExists() {
   database_exists=$(echo "show databases;" | omnisql -u $username -p $password -q | egrep "^$database_to_backup\|$username" | cut -f 1 -d '|')
@@ -155,7 +102,7 @@ function getPrivilegesTable() {
 IFS='
 '
   list_of_privileges_to_grant=()
-  list_of_user_privs=$(echo "\object_privileges table "$table_name | omnisql -p $password -q $database_to_backup)
+  list_of_user_privs=$(echo "\object_privileges table "$1 | omnisql -p $password -q $database_to_backup)
   for l in $list_of_user_privs 
   do
     user_p=$(echo $l | cut -f 1 -d ' ')
@@ -164,7 +111,7 @@ IFS='
     if [ ! "$(echo "create, drop" | egrep "^create" )" == "" ]; then
       list_of_privs="all";
     fi;
-    list_of_privileges_to_grant+=($(echo "GRANT "$list_of_privs" ON TABLE "$table_name" TO "$user_p";"))
+    list_of_privileges_to_grant+=($(echo "GRANT "$list_of_privs" ON "$2" "$1" TO "$user_p";"))
   done;
 }
 
@@ -175,7 +122,7 @@ IFS='
   do
     if [ "$action" = "backup" ]; then
       echo "Info: Adding table "$table_name" to backup file."
-      getPrivilegesTable $table_name
+      getPrivilegesTable $table_name TABLE
       echo "dump table $table_name to '$backup_dir"/"$table_name.gz' with (compression='gzip');" | omnisql -p $password -q $database_to_backup >/dev/null
     elif [ "$action" = "restore" ]; then
       echo "Info: Restoring table "$table_name
@@ -188,7 +135,7 @@ IFS='
       exit -1
     fi;
     if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$table_name".sql" ]]; then
-      echo "Restore privs for table "$table_name
+      echo "Info: Restoring privs for table "$table_name
       cat $backup_dir"/"$table_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
     fi;
     if [ "$action" == "backup" ]; then
@@ -204,7 +151,37 @@ IFS='
         exit -1
       fi;
     fi;
-    rm $backup_dir/$table_name".gz"
+    rm $backup_dir/$table_name.*
+  done;
+}
+
+function processViews() {
+IFS='
+' 
+  for view_name in $(cat $backup_dir/$list_of_views_filename)
+  do
+    if [ "$action" == "backup" ]; then
+      getPrivilegesTable $view_name VIEW
+      echo "\d "$view_name | omnisql -p $password -q $database_to_backup >$backup_dir/$view_name".sql"
+      if [ "$list_of_privileges_to_grant" != "" ]; then
+        printf '%s\n' "${list_of_privileges_to_grant[@]}" >$backup_dir/$view_name"_p.sql"
+        tar rf $backup_file -C $backup_dir $view_name"_p.sql"
+      fi;
+        tar rf $backup_file -C $backup_dir $view_name".sql"
+    elif [ "$action" == "restore" ]; then
+      tar xf $backup_file -C $backup_dir --wildcards $view_name"*.sql" >/dev/null
+      cat $backup_dir/$view_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
+    fi; 
+    if [ $? != 0 ]; then
+      echo "Error: Cannot "$action" view "$view_name". Existing"
+      cleanupBackupDir
+      exit -1
+    fi;
+    if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$view_name"_p.sql" ]]; then
+      echo "Info: Restoring privs for view "$table_name
+      cat $backup_dir"/"$view_name"_p.sql" | omnisql -p $password -q $database_to_backup >/dev/null
+    fi;
+    rm $backup_dir/$view_name*.sql
   done;
 }
 
@@ -237,6 +214,61 @@ if [ "$(which omnisql)" == "" ]; then
   exit -1
 fi;
 
+# start of the shell
+for i in "$@"
+do
+  case $i in
+    restore)
+      action="restore"
+      shift
+      ;;
+    backup)
+      action="backup"
+      shift
+      ;;
+    --user=*)
+      username=${i#*=}
+      shift
+      ;;
+    --password=*)
+      password=${i#*=}
+      shift
+      ;;
+    --database=*)
+      database_to_backup=${i#*=}
+      shift
+      ;;
+    --dumpfile=*)
+      backup_file=${i#*=}
+      shift
+      ;;
+    --dumpdir=*)
+      backup_dir=${i#*=}/temp_backup_restore_heavy
+      shift
+      ;;
+    --forcedb)
+      force_dest_db_creation=yes;
+      shift
+      ;;
+    --noprivs)
+      import_privileges=no
+      shift
+      ;;
+    --help)
+      show_usage_and_exit 0
+      shift
+      ;;
+     *)
+       show_usage_and_exit 1
+       ;;
+  esac;
+done;
+
+ if [ "$action" == "" ]; then
+   echo "Error: Choose if do a backup or a restore"
+   show_usage_and_exit 1
+ fi;
+
 createAndCheckBackupDir
 start_time=$(date +%s)
 
@@ -256,9 +288,16 @@ if [ "$action" = "backup" ]; then
     cleanupBackupDir
     exit -1
   fi;
+  
+  echo "Info: Getting the list of the views to backup."
+  echo "\v" | omnisql -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_views_filename
+  if [ $(cat $backup_dir/$list_of_views_filename | wc -l ) -gt 0 ]; then
+    tar rf $backup_file -C $backup_dir $list_of_views_filename
+    processViews
+  fi;
   echo "Info: Getting the list of the dashboards to backup."
   echo "\dash" | omnisql -p $password -q $database_to_backup | sort | egrep -v "Dashboard ID|display." >$backup_dir/$list_of_dashboards_filename
-  if [ $(cat $backup_dir/$list_of_dashboards_filename | wc -l ) > 0 ]; then
+  if [ $(cat $backup_dir/$list_of_dashboards_filename | wc -l ) -gt 0 ]; then
     tar rf $backup_file -C $backup_dir $list_of_dashboards_filename
     processDashboards
   else
@@ -298,10 +337,14 @@ elif [ "$action" == "restore" ]; then
   if [ $? == 0 ]; then
     processDashboards
   fi;
+  tar xf $backup_file -C $backup_dir $list_of_views_filename >/dev/null
+  if [ $? == 0 ]; then
+    processViews
+  fi;
   cleanupBackupDir
   end_time=$(date +%s)
   echo "Info: Restore of database "$database_to_backup" has been successful.
       Elapsed time "$(( end_time - start_time ))" seconds."
 fi;
 
-exit 0
+exit
