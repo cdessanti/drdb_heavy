@@ -121,7 +121,7 @@ IFS='
   for table_name in $(cat $backup_dir/$list_of_tables_filename)
   do
     if [ "$action" = "backup" ]; then
-      echo "Info: Adding table "$table_name" to backup file."
+      echo "Info: Adding table "$table_name" to dump file."
       getPrivilegesTable $table_name TABLE
       echo "dump table $table_name to '$backup_dir"/"$table_name.gz' with (compression='gzip');" | omnisql -p $password -q $database_to_backup >/dev/null
     elif [ "$action" = "restore" ]; then
@@ -158,6 +158,13 @@ IFS='
 function processViews() {
 IFS='
 ' 
+  if [ "$action" == "backup" ]; then
+    echo "Info: Adding views definition and privilges to dump file."
+  elif [[ "$action" == "restore" && "$import_privileges" == "yes" ]]; then
+    echo "Info: Restoring views definitions and privileges."
+  else
+    echo "Info: Restoring views definitions"
+  fi;
   for view_name in $(cat $backup_dir/$list_of_views_filename)
   do
     if [ "$action" == "backup" ]; then
@@ -169,6 +176,7 @@ IFS='
       fi;
         tar rf $backup_file -C $backup_dir $view_name".sql"
     elif [ "$action" == "restore" ]; then
+      echo "Info: Restoring view "$view_name
       tar xf $backup_file -C $backup_dir --wildcards $view_name"*.sql" >/dev/null
       cat $backup_dir/$view_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
     fi; 
@@ -222,7 +230,7 @@ do
       action="restore"
       shift
       ;;
-    backup)
+    dump)
       action="backup"
       shift
       ;;
