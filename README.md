@@ -50,11 +50,12 @@ Info: Backup of database tpch_r has been successful.
 
 if the lz4 is avaiable, the drheavy.sh command will use as internal compressor. the time of the backup will decrease dramatically but the 
 
+```bash
 Info: Backup of database tpch_r has been successful.
       Backup file /mapd_storage/dump_kxn.tar.
       Elapsed time 5 seconds
       File size 351M.
-
+```
 
 Restore into a database called tpch_r2 using the deafult user admin with the default password forcing the databse creation.
 
