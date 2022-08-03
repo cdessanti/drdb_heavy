@@ -48,7 +48,7 @@ Info: Backup of database tpch_r has been successful.
       File size 198M.
 ```
 
-if the lz4 is avaiable, the drheavy.sh command will use as internal compressor. The time of the backup will decrease dramatically but the size of the dump file will be around 70% bigger.
+if the --uselz4 parameter has been specified and the lz4 is avaiable in the system, the drheavy.sh command will use as internal compressor. The time of the backup will decrease dramatically but the size of the dump file will be around 70% bigger.
 
 ```bash
 Info: Backup of database tpch_r has been successful.
