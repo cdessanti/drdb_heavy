@@ -48,7 +48,7 @@ Info: Backup of database tpch_r has been successful.
       File size 198M.
 ```
 
-if the lz4 is avaiable, the drheavy.sh command will use as internal compressor. the time of the backup will decrease dramatically but the 
+if the lz4 is avaiable, the drheavy.sh command will use as internal compressor. The time of the backup will decrease dramatically but the size of the dump file will be around 70% bigger.
 
 ```bash
 Info: Backup of database tpch_r has been successful.
@@ -57,7 +57,7 @@ Info: Backup of database tpch_r has been successful.
       File size 351M.
 ```
 
-Restore into a database called tpch_r2 using the deafult user admin with the default password forcing the databse creation.
+Restore into a database called tpch_r2 using the deafult user admin with the default password and forcing the databse creation.
 
 ```bash
 ./drdbheavy.sh restore --database=tpch_r2 \
@@ -83,7 +83,7 @@ Info: Restoring privs for view orders
 Info: Restore of database tpch_r2 has been successful.
       Elapsed time 11 seconds.
 ```
-Duplicate a database called into using the lz4 compression for the maximum speed up
+Duplicate a database called tpch_r into a new one called tpch_dump using the lz4 compression for the maximum speed.
 
 ```bash
 ./drdbheavy.sh duplicate --database=tpch_r --targetdatabase=tpch_dump \
