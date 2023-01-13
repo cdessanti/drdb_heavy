@@ -13,9 +13,9 @@ The only database parameters that need special attention are --allowed-export-pa
 |--database=dbname| the database to dump/restore. it's assume that's the system in running on localhost using the default port |
 |  --dumpfile=dump_file name | name of the archive of backup/restore file --dumpdir=tempdir temp directory. Must be accessible in read/write by heavy database set parameter allowed-import-paths and allowed-export-paths in the instance   |
 |--forcedb | during restore force the creation of a database if not exists. if the database already exists return an error |
-|  --noprivs| during restore don't import the privileges on objects. everything|
+|  --noprivs| during restore don't import the object's privilege.|
 | --user=username|database username [defaults to admin]  |
-|--password=pwd |database password [default to HyperInteractive] |
+|--password=pwd |database password [defaulta to HyperInteractive] |
 |--targetdatabase| use by the duplicate command only. It's the name of the duplicated database|
 |--uselz4| if avaiable in the system the the lz4 will be used as internal compressor. the time of backup will decrease drammatically but the resulting dump archive will be around twice the size|
 
