@@ -21,15 +21,15 @@ function show_usage_and_exit()  {
   echo "--user=username           username of the source/target database"
   echo "--password=pwd            password" 
   echo "--targetdatabase=dbname   name of the duplicated database"
-
-  exit "--uselz4    use the lz4 compression instead gzip"
+  echo "--uselz4    use the lz4 compression instead gzip"
+  exit
 }
 
 function checkDatabaseExists() {
   database_exists=$(echo "show databases;" | omnisql -u $username -p $password -q | egrep "^$1\|$username" | cut -f 1 -d '|')
   if [ "$database_exists" == "" ]; then
     echo "Error: connecting to the database.
-    Check you username and password are correct and the database "$database_to_backup" exists. existing";
+    Check your username and password are correct and that the database "$database_to_backup" exists. existing";
     cleanupBackupDir
     exit -1
   fi;
@@ -43,7 +43,7 @@ function checkUsersExist() {
       echo "show user details "$i | omnisql -p HyperInteractive -q  2>/dev/null >/dev/null
       if [ $? == 0 ]; then
         cleanupBackupDir
-        echo "Error: user "$i" doesn't exists in the target database. Exiting"
+        echo "Error: user "$i" doesn't exist in the target database. Exiting"
         exit -1
       fi;
     fi;
@@ -76,7 +76,7 @@ function createAndCheckBackupDir() {
   elif [ "$action" == "backup" ]; then 
     echo "COPY (SELECT 1) TO '$backup_dir/test_file.csv';" | omnisql -p $password -q $database_to_backup
     if [ $? != 0 ]; then
-      echo "Error: Cannot write to temporary directory ("$backup_dir") for the "$action". Exiting"
+      echo "Error: Cannot write to a temporary directory ("$backup_dir") for the "$action". Exiting"
       cleanupBackupDir
       exit -1
     fi;
@@ -94,7 +94,7 @@ function checkBackupFile() {
     cleanupBackupDir
     exit -1
   fi;
-  tar xf /mapd_storage/backup_kxn_db.tar -O $list_of_tables_filename >/dev/null
+  tar xf "$backup_file" -O $list_of_tables_filename >/dev/null
   if [ $? != 0 ]; then
     echo "Error: The backup file "$backup_file" is invalid. Exiting"
     cleanupBackupDir
@@ -162,7 +162,7 @@ IFS='
       exit -1
     fi;
     if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$table_name".sql" ]]; then
-      echo "Info: Restoring privs for table "$table_name
+      echo "Info: Restoring privileges for table "$table_name
       cat $backup_dir"/"$table_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
     fi;
     if [ "$action" == "backup" ]; then
@@ -186,7 +186,7 @@ function processViews() {
 IFS='
 ' 
   if [ "$action" == "backup" ]; then
-    echo "Info: Adding views definition and privilges to dump file."
+    echo "Info: Adding views definition and privileges to dump file."
   elif [[ "$action" == "restore" && "$import_privileges" == "yes" ]]; then
     echo "Info: Restoring views definitions and privileges."
   else
@@ -213,7 +213,7 @@ IFS='
       exit -1
     fi;
     if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$view_name"_p.sql" ]]; then
-      echo "Info: Restoring privs for view "$table_name
+      echo "Info: Restoring privileges for view "$table_name
       cat $backup_dir"/"$view_name"_p.sql" | omnisql -p $password -q $database_to_backup >/dev/null
     fi;
     rm $backup_dir/$view_name*.sql
@@ -242,7 +242,7 @@ IFS='
   done;
 }
 
-# search for command and utilities needed
+# Search for command and utilities needed
 export PATH=/opt/omnisci/bin/:/opt/heavyai/bin:$PATH
 if [ "$(which omnisql)" == "" ]; then
   echo "Error: Cannot find omnisql. Add if to you PATH variable"
@@ -259,7 +259,7 @@ else
   compressor="gzip"
 fi;
 
-# start of the shell
+# Start of the shell
 for i in "$@"
 do
   case $i in
