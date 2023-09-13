@@ -1,27 +1,27 @@
-A simple script to dump and restore all tables, views and dashboards 
-of an HEAVY.AI database.
+A simple script to dump and restore all tables, views, and dashboards of a HEAVY.AI database.
 
-The utility isn't using any advanced or modern features of the database, just the legacy \ command of omniscql/heavysql.
+This utility does not utilize advanced or modern database features, relying solely on the legacy \ command of omnisql/heavysql, so it's going to work on almost very version.
 
-The only database parameters that need special attention are --allowed-export-paths in the source database and --allowed-import-paths in the destination database; they must contain the tempdir used in the utility during the dump and restore 
+The only database parameters requiring special attention are --allowed-export-paths in the source database and --allowed-import-paths in the destination database. These parameters must include the tempdir used by the utility during the dump and restore processes.
 
 #### parameters
 
 |  parameter name |parameter description|
 | ------------ | ------------ |
-|  dump, restore or duplicate | use dump to backup your database and restore to restore into the new database. use the --database switch to specify the database to dump/restore. The experimental duplicate command will duplicate all the tables in source --database into the --targetdatabase  |
-|--database=dbname| the database to dump/restore. it's assume that's the system in running on localhost using the default port |
-|  --dumpfile=dump_file name | name of the archive of backup/restore file --dumpdir=tempdir temp directory. Must be accessible in read/write by heavy database set parameter allowed-import-paths and allowed-export-paths in the instance   |
-|--forcedb | during restore force the creation of a database if not exists. if the database already exists return an error |
-|  --noprivs| during restore don't import the object's privilege.|
-| --user=username|database username [defaults to admin]  |
+|  dump, restore or duplicate | Use dump to back up your database and restore to restore into a new database. The experimental duplicate command duplicates all tables from the source --database into the --targetdatabase.  |
+|--database=dbname| The database to dump/restore. Assumes the system is running on localhost using the default port. |
+|  --dumpfile=dump_file_name | The name of the archive backup/restore file. Use --dumpdir=tempdir as the temporary directory. It must be accessible for read/write by the Heavy database, and set the allowed-import-paths and allowed-export-paths parameters in the instance.   |
+|--forcedb | During restore, force the creation of a database if it does not exist. If the database already exists, return an error. |
+|  --noprivs| During restore, don't import the object's privileges.|
+| --user=username|Database username (defaults to 'admin').  |
 |--password=pwd |database password [defaulta to HyperInteractive] |
-|--targetdatabase| use by the duplicate command only. It's the name of the duplicated database|
-|--uselz4| if avaiable in the system the the lz4 will be used as internal compressor. the time of backup will decrease drammatically but the resulting dump archive will be around twice the size|
+|--targetdatabase| Used exclusively by the duplicate command, it specifies the name of the resulting duplicated database.|
+|--uselz4| If available on the system, LZ4 will be used as the internal compressor. Backup time will significantly decrease, but the resulting dump archive will be around twice the size.|
 
 ##### examples:
 
-Backup a database called tpch_r using the deafult user admin with the default password, using the gzip as compressor
+
+Back up a database called "tpch_r" using the default user "admin" with the default password and gzip as the compressor,
 
 ```bash
 ./drdbheavy.sh dump --database=tpch_r \
@@ -48,7 +48,7 @@ Info: Backup of database tpch_r has been successful.
       File size 198M.
 ```
 
-if the --uselz4 parameter has been specified and the lz4 is avaiable in the system, the drheavy.sh command will use as internal compressor. The time of the backup will decrease dramatically but the size of the dump file will be around 70% bigger.
+If the --uselz4 parameter has been specified and LZ4 is available on the system, the drheavy.sh command will use LZ4 as the internal compressor. This will result in a significant decrease in backup time, but the size of the dump file will increase by approximately 70%.
 
 ```bash
 Info: Backup of database tpch_r has been successful.
@@ -57,7 +57,7 @@ Info: Backup of database tpch_r has been successful.
       File size 351M.
 ```
 
-Restore into a database called tpch_r2 using the deafult user admin with the default password and forcing the databse creation.
+Restore the backup into a database called "tpch_r2" using the default user "admin" with the default password and forcing the database creation if it doesn't exist
 
 ```bash
 ./drdbheavy.sh restore --database=tpch_r2 \
