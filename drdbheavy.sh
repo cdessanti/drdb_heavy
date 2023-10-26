@@ -34,9 +34,10 @@ function show_usage_and_exit()  {
 function findDefaultDatabase() {
   for default_database in heavyai omnisci mapd
   do
-    $(echo "show databases;" | $SQLCLIENT -u $username -p $password $1 -q default_database)
-    if [ $? == 0 ]; then
+    echo "select 1;" | $SQLCLIENT -u $username -p $password -q $default_database >/dev/null
+    if [ "$?" == "0" ]; then
       root_database=$default_database
+      log $INFO_S "Using "$root_database" as root database"
       break;
     fi;
   done;
@@ -47,7 +48,7 @@ function findDefaultDatabase() {
 }
 
 function checkDatabaseExists() {
-  database_exists=$(echo "show databases;" | $SQLCLIENT -u $username -p $password $1 -q $root_database | egrep "^$1\|" | cut -f 1 -d '|')
+  database_exists=$(echo "show databases;" | $SQLCLIENT -u $username -p $password $1 -q | egrep "^$1\|" | cut -f 1 -d '|')
   if [ "$database_exists" == "" ]; then
     log $ERROR_S "Cannot connect to the database: "$database_to_backup".\nCheck that your username and password are correct and that the database exist";
     cleanupBackupDir
@@ -366,6 +367,7 @@ case $action in
 esac;
 
 checkCommandAndUtilities
+findDefaultDatabase
 createAndCheckBackupDir
 start_time=$(date +%s)
 
