@@ -9,45 +9,67 @@ list_of_dashboards_filename=list_of_dashboards.txt
 list_of_users_filename=list_of_users.txt
 list_of_views_filename=list_of_views.txt
 compressor="gzip"
+#list of severity
+INFO_S="Info"
+WARNING_S="Warning"
+ERROR_S="Error"
+SQLCLIENT="omnisql"
+root_database=""
 
 function show_usage_and_exit()  {
-  echo "backup_database.sh dump|restore|duplicate --database=database_name --dumpfile=dump_file --dumpdir=tempdir [--forcedb] [--noprivs] [--user=username] [--password=pwd] [--targetdatabase=dbname] [--uselz4]"
-  echo "dump|restore|duplicate    create a dump, restore or duplicate the database specified wit the --database switch"
-  echo "--database=dbname         the database to be dumped, restored or duplicated"
-  echo "--dumpfile=filename       the dumpfile created by the dump or used by restore."
-  echo "--dumpdir=dirname         a temporary dir use by the utility to read/writes file. it's to be accessible by the source/target database"
-  echo "--forcedb                 force the creation of a targetdb in case of restore/duplicate"
-  echo "--noprivs                 don't grant any privs in the targetdatabase"
-  echo "--user=username           username of the source/target database"
-  echo "--password=pwd            password" 
-  echo "--targetdatabase=dbname   name of the duplicated database"
-  echo "--uselz4    use the lz4 compression instead gzip"
-  exit
+  echo "Usage: drdbheavy.sh dump|restore|duplicate --database=database_name --dumpfile=dump_file --dumpdir=tempdir [--forcedb] [--noprivs] [--user=username] [--password=pwd] [--targetdatabase=dbname] [--uselz4]"
+  echo "dump|restore|duplicate:     Create a dump, restore, or duplicate the specified database using the --database switch"
+  echo "--database=dbname:          The name of the database to be dumped, restored, or duplicated"
+  echo "--dumpfile=filename:        The file containg the backup"
+  echo "--tempdir=dirname:          A temporary directory used by the utility to read/write files, accessible by the source/target database"
+  echo "--forcedb:                  Force the creation of a target database in case of restore/duplicate"
+  echo "--noprivs:                  Do not grant any privileges in the target database"
+  echo "--user=username:            Username for the source/target database"
+  echo "--password=pwd:             Password of the user"
+  echo "--targetdatabase=dbname:    Name of the duplicated database"
+  echo "--uselz4:                   Use the lz4 compression instead of gzip"
+  exit $1
+}
+
+function findDefaultDatabase() {
+  for default_database in heavyai omnisci mapd
+  do
+    $(echo "show databases;" | $SQLCLIENT -u $username -p $password $1 -q default_database)
+    if [ $? == 0 ]; then
+      root_database=$default_database
+      break;
+    fi;
+  done;
+  if [ "$root_database" == "" ]; then
+    log $ERROR_S "Cannot find the root database. Exiting"
+    exit 1
+  fi;
 }
 
 function checkDatabaseExists() {
-  database_exists=$(echo "show databases;" | omnisql -u $username -p $password -q | egrep "^$1\|$username" | cut -f 1 -d '|')
+  database_exists=$(echo "show databases;" | $SQLCLIENT -u $username -p $password $1 -q $root_database | egrep "^$1\|" | cut -f 1 -d '|')
   if [ "$database_exists" == "" ]; then
-    echo "Error: connecting to the database.
-    Check your username and password are correct and that the database "$database_to_backup" exists. existing";
+    log $ERROR_S "Cannot connect to the database: "$database_to_backup".\nCheck that your username and password are correct and that the database exist";
     cleanupBackupDir
     exit -1
   fi;
 }
 
 function checkUsersExist() {
-  tar xf $backup_file -C $backup_dir $list_of_users_filename
-  for i in $(cat $list_of_users_filename)
-  do
-    if [ "$i" != "admin" ]; then 
-      echo "show user details "$i | omnisql -p HyperInteractive -q  2>/dev/null >/dev/null
-      if [ $? == 0 ]; then
-        cleanupBackupDir
-        echo "Error: user "$i" doesn't exist in the target database. Exiting"
-        exit -1
+  tar xf "$backup_file" --force-local -C  $backup_dir $list_of_users_filename
+  if [ -f $list_of_users_filename ]; then
+    for i in $(cat $list_of_users_filename)
+    do
+      if [ "$i" != "admin" ]; then 
+        echo "show user details "$i | $SQLCLIENT -p HyperInteractive -q $root_database 2>/dev/null >/dev/null
+        if [ $? == 0 ]; then
+          cleanupBackupDir
+          log $ERROR_S "User "$i" doesn't exist in the target database. Exiting"
+          exit -1
+        fi;
       fi;
-    fi;
-  done;
+    done;
+  fi;
 }
 
 function cleanupBackupDir() {
@@ -57,26 +79,26 @@ function cleanupBackupDir() {
 function createAndCheckBackupDir() {
   mkdir $backup_dir
   if [ $? != 0 ]; then
-    echo "Error: cannot create the temporary directory ("$backup_dir") for the "$action". Exiting"
+    log $ERROR_S "Cannot create the temporary directory ("$backup_dir"). Exiting"
     exit -1
   fi;
   if [ "$action" == "restore" ]; then 
     echo "1" >$backup_dir/test_file.csv
     echo "DROP TABLE IF EXISTS temp_backup_6hPh9hgW3qxu6cXCZzNA;
           CREATE TABLE temp_backup_6hPh9hgW3qxu6cXCZzNA ( f1 integer );
-          COPY temp_backup_6hPh9hgW3qxu6cXCZzNA FROM '$backup_dir/test_file.csv';" | omnisql -p $password -q >/dev/null
+          COPY temp_backup_6hPh9hgW3qxu6cXCZzNA FROM '$backup_dir/test_file.csv';" | $SQLCLIENT -p $password -q $root_database >/dev/null
     if [ $? != 0 ]; then
-      echo "Error: Cannot read to temporary dir for the "$action". Exiting"
+      log $ERROR_S "Cannot read from the temporary directory ("$temp_dir"). Exiting"
       cleanupBackupDir
-      echo "drop table EXISTS temp_backup_6hPh9hgW3qxu6cXCZzNA;" omnisql -p $password -q $database_to_backup >/dev/null
+      echo "drop table EXISTS temp_backup_6hPh9hgW3qxu6cXCZzNA;" $SQLCLIENT -p $password -q $database_to_backup >/dev/null
       exit -1
     fi;
-    echo "drop table EXISTS temp_backup_6hPh9hgW3qxu6cXCZzNA;" omnisql -p $password -q $database_to_backup >/dev/null
+    echo "drop table EXISTS temp_backup_6hPh9hgW3qxu6cXCZzNA;" $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     rm $backup_dir/test_file.csv
   elif [ "$action" == "backup" ]; then 
-    echo "COPY (SELECT 1) TO '$backup_dir/test_file.csv';" | omnisql -p $password -q $database_to_backup
+    echo "COPY (SELECT 1) TO '$backup_dir/test_file.csv';" | $SQLCLIENT -p $password -q $database_to_backup
     if [ $? != 0 ]; then
-      echo "Error: Cannot write to a temporary directory ("$backup_dir") for the "$action". Exiting"
+      log $ERROR_S "The database cannot write to the backup directory ("$temp_dir").\nPlease add the directory in the --allowed-import-paths and --allowed-export-paths and restart the database"
       cleanupBackupDir
       exit -1
     fi;
@@ -90,13 +112,13 @@ function getDashboardAttr() {
 
 function checkBackupFile() {
   if [ ! -f "$backup_file" ]; then
-    echo "Error: Cannot open backup file "$backup_file" for reading. Exiting";
+    log $ERROR_S "Cannot open backup file "$backup_file" for reading. Exiting";
     cleanupBackupDir
     exit -1
   fi;
-  tar xf "$backup_file" -O $list_of_tables_filename >/dev/null
+  tar xf "$backup_file" --force-local -O $list_of_tables_filename >/dev/null
   if [ $? != 0 ]; then
-    echo "Error: The backup file "$backup_file" is invalid. Exiting"
+    log $ERROR_S "The backup file "$backup_file" is invalid. Exiting"
     cleanupBackupDir
     exit -1
   fi;
@@ -113,7 +135,7 @@ function getPrivilegesTable() {
 IFS='
 '
   list_of_privileges_to_grant=()
-  list_of_user_privs=$(echo "\object_privileges table "$1 | omnisql -p $password -q $database_to_backup)
+  list_of_user_privs=$(echo "\object_privileges table "$1 | $SQLCLIENT -p $password -q $database_to_backup)
   for l in $list_of_user_privs 
   do
     user_p=$(echo $l | cut -f 1 -d ' ')
@@ -129,17 +151,17 @@ IFS='
 function processSingleTable()
 {
   if [ "$action" == "duplicate" ]; then
-    echo "Info: Copying table "$table_name
+    log $INFO_S "Copying table "$table_name
     getPrivilegesTable $table_name TABLE
-    echo "dump table $table_name to '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | omnisql -p $password -q $database_to_backup >/dev/null
-    echo "restore table $table_name from '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | omnisql -p $password -q $database_to_restore >/dev/null
+    echo "dump table $table_name to '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
+    echo "restore table $table_name from '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | $SQLCLIENT -p $password -q $database_to_restore >/dev/null
     if [ $? != 0 ]; then
-      echo "Error: Cannot "$action" table "$table_name". Existing"
+      log $ERROR_S "Cannot "$action" table "$table_name". Exiting"
       cleanupBackupDir
       exit -1
     fi;
     rm $backup_dir"/"$table_name.dmp;
-    echo "Info: Copied table "$table_name
+    log $INFO_S "Copied table "$table_name
   fi;
 }
 function processTables() {
@@ -148,32 +170,32 @@ IFS='
   for table_name in $(cat $backup_dir/$list_of_tables_filename)
   do
     if [ "$action" = "backup" ]; then
-      echo "Info: Adding table "$table_name" to dump file."
+      log $INFO_S "Adding table "$table_name" to dump file"
       getPrivilegesTable $table_name TABLE
-      echo "dump table $table_name to '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | omnisql -p $password -q $database_to_backup >/dev/null
+      echo "dump table $table_name to '$backup_dir"/"$table_name.dmp' with (compression='$compressor');" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     elif [ "$action" = "restore" ]; then
-      echo "Info: Restoring table "$table_name
-      tar xf $backup_file -C $backup_dir --wildcards $table_name.*
-      echo "restore table \""$table_name"\" from '"$backup_dir"/"$table_name".dmp';" | omnisql -p $password -q $database_to_backup >/dev/null
+      log $INFO_S "Restoring table "$table_name
+      tar xf "$backup_file" --force-local -C  $backup_dir --wildcards $table_name.*
+      echo "restore table \""$table_name"\" from '"$backup_dir"/"$table_name".dmp' with (compression='$compressor');" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     fi;
     if [ $? != 0 ]; then
-      echo "Error: Cannot "$action" table "$table_name". Existing"
+      log $ERROR_S "Cannot "$action" table "$table_name". Exiting"
       cleanupBackupDir
       exit -1
     fi;
     if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$table_name".sql" ]]; then
-      echo "Info: Restoring privileges for table "$table_name
-      cat $backup_dir"/"$table_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
+      log $INFO_S "Restoring privileges for table "$table_name
+      cat $backup_dir"/"$table_name".sql" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     fi;
     if [ "$action" == "backup" ]; then
       if [ "$list_of_privileges_to_grant" != "" ]; then
         printf '%s\n' "${list_of_privileges_to_grant[@]}" > $backup_dir/$table_name".sql"
-        tar rf  $backup_file -C $backup_dir $table_name".sql" $table_name".dmp"
+        tar rf "$backup_file" --force-local -C  $backup_dir $table_name".sql" $table_name".dmp"
       else
-        tar rf  $backup_file -C $backup_dir $table_name".dmp"
+        tar rf "$backup_file" --force-local -C  $backup_dir $table_name".dmp"
       fi;
       if [ $? != 0 ]; then
-        echo "Error: Cannot backup table "$table_name". Existing"
+        log $ERROR_S "Cannot backup table "$table_name". Exiting"
         cleanupBackupDir
         exit -1
       fi;
@@ -186,35 +208,35 @@ function processViews() {
 IFS='
 ' 
   if [ "$action" == "backup" ]; then
-    echo "Info: Adding views definition and privileges to dump file."
+    log $INFO_S "Adding views definition and privileges to dump file."
   elif [[ "$action" == "restore" && "$import_privileges" == "yes" ]]; then
-    echo "Info: Restoring views definitions and privileges."
+    log $INFO_S "Restoring views definitions and privileges."
   else
-    echo "Info: Restoring views definitions"
+    log $INFO_S "Restoring views definitions"
   fi;
   for view_name in $(cat $backup_dir/$list_of_views_filename)
   do
     if [ "$action" == "backup" ]; then
       getPrivilegesTable $view_name VIEW
-      echo "\d "$view_name | omnisql -p $password -q $database_to_backup >$backup_dir/$view_name".sql"
+      echo "\d "$view_name | $SQLCLIENT -p $password -q $database_to_backup >$backup_dir/$view_name".sql"
       if [ "$list_of_privileges_to_grant" != "" ]; then
         printf '%s\n' "${list_of_privileges_to_grant[@]}" >$backup_dir/$view_name"_p.sql"
-        tar rf $backup_file -C $backup_dir $view_name"_p.sql"
+        tar rf "$backup_file" --force-local -C  $backup_dir $view_name"_p.sql"
       fi;
-        tar rf $backup_file -C $backup_dir $view_name".sql"
+        tar rf "$backup_file" --force-local -C  $backup_dir $view_name".sql"
     elif [ "$action" == "restore" ]; then
       echo "Info: Restoring view "$view_name
-      tar xf $backup_file -C $backup_dir --wildcards $view_name"*.sql" >/dev/null
-      cat $backup_dir/$view_name".sql" | omnisql -p $password -q $database_to_backup >/dev/null
+      tar xf "$backup_file" --force-local -C  $backup_dir --wildcards $view_name"*.sql" >/dev/null
+      cat $backup_dir/$view_name".sql" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     fi; 
     if [ $? != 0 ]; then
-      echo "Error: Cannot "$action" view "$view_name". Existing"
+      log $ERROR_S "Cannot "$action" view "$view_name". Exiting"
       cleanupBackupDir
       exit -1
     fi;
     if [[ "$action" == "restore" && "$import_privileges" == "yes" && -f $backup_dir"/"$view_name"_p.sql" ]]; then
-      echo "Info: Restoring privileges for view "$table_name
-      cat $backup_dir"/"$view_name"_p.sql" | omnisql -p $password -q $database_to_backup >/dev/null
+      log $INFO_S "Restoring privileges for view "$table_name
+      cat $backup_dir"/"$view_name"_p.sql" | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
     fi;
     rm $backup_dir/$view_name*.sql
   done;
@@ -228,36 +250,48 @@ IFS='
     getDashboardAttr 
     if [ "$action" == "backup" ]; then
         addDBUser $owner_trimmed
-        echo "Info: Adding dashboard "$name_trimmed" to backup file"
-        echo "\export_dashboard \"$name_trimmed\" \"$backup_dir/$name_trimmed.bak\" " | omnisql -p $password -q $database_to_backup >/dev/null
-        tar rf $backup_file -C $backup_dir $name_trimmed.bak >/dev/null
+        log $INFO_S "Adding dashboard "$name_trimmed" to backup file"
+        echo "\export_dashboard \"$name_trimmed\" \"$backup_dir/$name_trimmed.bak\" " | $SQLCLIENT -p $password -q $database_to_backup >/dev/null
+        tar rf "$backup_file" --force-local -C  $backup_dir $name_trimmed.bak >/dev/null
     elif [ "$action" == "restore" ]; then 
-        echo "Info: Restoring dashboard "$name_trimmed"."
-        tar xf $backup_file -C $backup_dir $name_trimmed.bak >/dev/null
+        log $INFO_S "Restoring dashboard "$name_trimmed"."
+        tar xf "$backup_file" --force-local -C  $backup_dir $name_trimmed.bak >/dev/null
         if [ $? == 0 ]; then
-        echo "\import_dashboard \"$name_trimmed\" \"$backup_dir/$name_trimmed.bak\" " | omnisql -p $password  $database_to_backup >/dev/null
+        echo "\import_dashboard \"$name_trimmed\" \"$backup_dir/$name_trimmed.bak\" " | $SQLCLIENT -p $password  $database_to_backup >/dev/null
         fi;
     fi;
     rm "$backup_dir/$name_trimmed.bak"
   done;
 }
 
+function checkCommandAndUtilities() {
 # Search for command and utilities needed
-export PATH=/opt/omnisci/bin/:/opt/heavyai/bin:$PATH
-if [ "$(which omnisql)" == "" ]; then
-  echo "Error: Cannot find omnisql. Add if to you PATH variable"
-  echo "export PATH=/your_heavy_installation/bin:$PATH"
-  exit -1
-fi;
+  export PATH=/opt/omnisci/bin/:/opt/heavyai/bin:$PATH
+  if [ "$(which omnisql)" == "" ]; then
+    if [ "$(which heavysql)" == "" ]; then
+      log $ERROR_S "Cannot find omnisql or heavysql command.\nAdd the installation directory to the PATH variable with the following command\nexport PATH=/your_heavy_installation/bin:\$PATH\nExiting"
+      exit -1
+    fi;
+    SQLCLIENT="heavysql"
+  fi;
+  SQLCLIENT="omnisql"
+}
 
-function setCompressor()
-if [ "$(which lz4)" != "" ]; then
-  echo "Info: Using lz4 as internal compressor."
-  compressor="lz4"
-else
-  echo "Info: Cannot find lz4, using gzip as internal compressor"
-  compressor="gzip"
-fi;
+function setCompressor() {
+  if [ "$(which lz4)" != "" ]; then
+    log $INFO_S "Using lz4 as internal compressor"
+    compressor="lz4"
+  else
+    log WARN_S "Cannot find lz4, using gzip as internal compressor"
+    compressor="gzip"
+  fi;
+}
+
+function log() {
+  severity=$1
+  message=$2
+  echo -e $severity": "$message"."
+}
 
 # Start of the shell
 for i in "$@"
@@ -295,7 +329,8 @@ do
       backup_file=${i#*=}
       shift
       ;;
-    --dumpdir=*)
+    --tempdir=*)
+      temp_dir=${i#*=}
       backup_dir=${i#*=}/temp_backup_restore_heavy
       shift
       ;;
@@ -316,67 +351,70 @@ do
       shift
       ;;
      *)
-       show_usage_and_exit 1
-       ;;
+      show_usage_and_exit 1
+      ;;
   esac;
 done;
 
- if [ "$action" == "" ]; then
-   echo "Error: Choose if do a backup or a restore"
-   show_usage_and_exit 1
- fi;
 
+case $action in
+  backup|restore|duplicate)
+  ;;
+  *)
+   log $ERROR_S_S "Please select DUMP, RESTORE or DUPLICATE as action."
+   show_usage_and_exit 1
+esac;
+
+checkCommandAndUtilities
 createAndCheckBackupDir
 start_time=$(date +%s)
 
 if [ "$action" = "backup" ]; then
   checkDatabaseExists $database_to_backup
-  echo "Info: Starting the backup of database "$database_to_backup"."
-  echo "Info: Getting the list of the tables to backup."
-  echo "show tables;" | omnisql -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_tables_filename
+  log $INFO_S "Starting the backup of database "$database_to_backup"."
+  log $INFO_S "Getting the list of the tables to backup"
+  echo "show tables;" | $SQLCLIENT -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_tables_filename
   if [ $(cat $backup_dir/$list_of_tables_filename | wc -l) = 0 ]; then
-    echo "Error: Cannot find any table in the database "$database_to_backup" exiting";
+    log $ERROR_S "Cannot find any table in the database "$database_to_backup" Exiting";
     cleanupBackupDir
     exit -1
   fi;
-  tar cf $backup_file -C $backup_dir $list_of_tables_filename >/dev/null
+  tar cf "$backup_file" --force-local -C $backup_dir $list_of_tables_filename >/dev/null
   if [ $? != 0 ]; then
-    echo "Error: Cannot create the backup file ("$backup_file"). Exiting";
+    log $ERROR_S "Cannot create the backup file ("$backup_file"). Exiting";
     cleanupBackupDir
     exit -1
   fi;
   
-  echo "Info: Getting the list of the views to backup."
-  echo "\v" | omnisql -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_views_filename
+  log $INFO_S "Getting the list of the views to backup"
+  echo "\v" | $SQLCLIENT -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_views_filename
   if [ $(cat $backup_dir/$list_of_views_filename | wc -l ) -gt 0 ]; then
-    tar rf $backup_file -C $backup_dir $list_of_views_filename
+    tar rf "$backup_file" --force-local -C  $backup_dir $list_of_views_filename
     processViews
   fi;
-  echo "Info: Getting the list of the dashboards to backup."
-  echo "\dash" | omnisql -p $password -q $database_to_backup | sort | egrep -v "Dashboard ID|display." >$backup_dir/$list_of_dashboards_filename
+  log $INFO_S "Getting the list of the dashboards to backup"
+  echo "\dash" | $SQLCLIENT -p $password -q $database_to_backup | sort | egrep -v "Dashboard ID|display." >$backup_dir/$list_of_dashboards_filename
   if [ $(cat $backup_dir/$list_of_dashboards_filename | wc -l ) -gt 0 ]; then
-    tar rf $backup_file -C $backup_dir $list_of_dashboards_filename
+    tar rf "$backup_file" --force-local -C  $backup_dir $list_of_dashboards_filename
     processDashboards
   else
-    echo "Info: No dashboards to backup."
+    log $INFO_S "No dashboards to backup"
   fi;
   rm $backup_dir/$list_of_dashboards_filename
   processTables
   printf '%s\n' "${list_of_users[@]}" >$backup_dir/$list_of_users_filename
-  tar rf $backup_file -C $backup_dir $list_of_users_filename
+  tar rf "$backup_file" --force-local -C  $backup_dir $list_of_users_filename
   cleanupBackupDir
   end_time=$(date +%s)
-  echo "Info: Backup of database "$database_to_backup" has been successful.
-      Backup file "$backup_file".
-      Elapsed time "$(( end_time - start_time ))" seconds
-      File size "$(ls -sh $backup_file | cut -d ' ' -f 1)"."
+  log $INFO_S "Backup of database "$database_to_backup" has been successful.\n      Backup file "$backup_file" with File Size "$(ls -sh "$backup_file" | cut -d ' ' -f 1)
+  log $INFO_S "Elapsed time "$(( end_time - start_time ))" seconds"
 elif [ "$action" == "restore" ]; then
   if [ "$force_dest_db_creation" != "yes" ]; then
     checkDatabaseExists $database_to_backup
   else
-    echo "CREATE DATABASE "$database_to_backup";" | omnisql -p $password -q 
+    echo "CREATE DATABASE "$database_to_backup";" | $SQLCLIENT -p $password -q 
     if [ $? != 0 ]; then
-      echo "Error: Cannot create database "$database_to_backup". Exiting"
+      log $ERROR_S "Cannot create database "$database_to_backup". Exiting"
       cleanupBackupDir
       exit -1
     fi;
@@ -384,31 +422,31 @@ elif [ "$action" == "restore" ]; then
   if [ "$import_privileges" == "yes" ]; then
     checkUsersExist
   fi;
-  echo "Info: Starting the restore of database "$database_to_backup"."
+  log $INFO_S "Starting the restore of database "$database_to_backup"."
   checkBackupFile
-  echo "Info: Getting the list of the tables to restore."
-  tar xf $backup_file -C $backup_dir $list_of_tables_filename
+  log $INFO_S "Getting the list of the tables to restore."
+  tar xf "$backup_file" --force-local -C  $backup_dir $list_of_tables_filename
   processTables
   rm $backup_dir/$list_of_tables_filename
-  tar xf $backup_file -C $backup_dir $list_of_dashboards_filename >/dev/null
+  tar xf "$backup_file" --force-local -C  $backup_dir $list_of_dashboards_filename 2>/dev/null 1>/dev/null
   if [ $? == 0 ]; then
     processDashboards
   fi;
-  tar xf $backup_file -C $backup_dir $list_of_views_filename >/dev/null
+  tar xf "$backup_file" --force-local -C  $backup_dir $list_of_views_filename 2>/dev/null 1>/dev/null
   if [ $? == 0 ]; then
     processViews
   fi;
   cleanupBackupDir
   end_time=$(date +%s)
-  echo "Info: Restore of database "$database_to_backup" has been successful.
-      Elapsed time "$(( end_time - start_time ))" seconds."
+  log $INFO_S "Restore of database "$database_to_backup" has been successful."
+  log $INFO_S "Elapsed time "$(( end_time - start_time ))" seconds."
 elif [ "$action" == "duplicate" ]; then
   if [ "$force_dest_db_creation" != "yes" ]; then
     checkDatabaseExists $database_to_restore
   else
-    echo "CREATE DATABASE "$database_to_restore";" | omnisql -p $password -q 
+    echo "CREATE DATABASE "$database_to_restore";" | $SQLCLIENT -p $password -q $root_database
     if [ $? != 0 ]; then
-      echo "Error: Cannot create database "$database_to_restore". Exiting"
+      log $ERROR_S "Cannot create database "$database_to_restore". Exiting"
       cleanupBackupDir
       exit -1
     fi;
@@ -417,15 +455,15 @@ elif [ "$action" == "duplicate" ]; then
   #  checkUsersExist
   #fi;
 
-  echo "show tables;" | omnisql -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_tables_filename
+  echo "show tables;" | $SQLCLIENT -p $password -q $database_to_backup | grep -v "returned." >$backup_dir/$list_of_tables_filename
   for table_name in $(cat $backup_dir/$list_of_tables_filename)
   do
     processSingleTable
   done;
   end_time=$(date +%s)
-  echo "Info: The duplication of database "$database_to_backup" has been successful.
-      Elapsed time "$(( end_time - start_time ))" seconds."
+  log $INFO_S "The duplication of database "$database_to_backup" has been successful"
+  log $INFO_S "Total Elapsed time "$(( end_time - start_time ))" seconds"
   cleanupBackupDir
   exit 0
 fi;
-exit
+exit 0
